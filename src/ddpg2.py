@@ -27,8 +27,8 @@ def run_tests():
     loss = ddpg.update(batch, learn=False)
     return loss
 
-value_net  = recnn.nn.Critic(1290, 128, 256, 54e-2)
-policy_net = recnn.nn.Actor(1290, 128, 256, 6e-1)
+value_net  = recnn.nn.Critic(129*frame_size, 128, 256, 54e-2)
+policy_net = recnn.nn.Actor(129*frame_size, 128, 256, 6e-1)
 
 cuda = torch.device('cuda')
 ddpg = recnn.nn.DDPG(policy_net, value_net)

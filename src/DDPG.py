@@ -34,9 +34,9 @@ tqdm.pandas()
 dirs = recnn.data.env.DataPath(
     base="",
     embeddings="ml20_pca128.pkl",
-    ratings="ml-20m/ratings.csv",
+    ratings="models/train.csv",
     cache="frame_env.pkl", # cache will generate after you run
-    use_cache=True
+    use_cache=False
 )
 env = recnn.data.env.FrameEnv(dirs, frame_size, batch_size)
 
@@ -182,12 +182,12 @@ params = {
 
 # === end ===
 
-value_net = Critic(1290, 128, 256, params['critic_weight_init']).to(cuda)
-policy_net = Actor(1290, 128, 256, params['actor_weight_init']).to(cuda)
+value_net = Critic(129*frame_size, 128, 256, params['critic_weight_init']).to(cuda)
+policy_net = Actor(129*frame_size, 128, 256, params['actor_weight_init']).to(cuda)
 
 
-target_value_net = Critic(1290, 128, 256).to(cuda)
-target_policy_net = Actor(1290, 128, 256).to(cuda)
+target_value_net = Critic(129*frame_size, 128, 256).to(cuda)
+target_policy_net = Actor(129*frame_size, 128, 256).to(cuda)
 
 ad = recnn.nn.models.AnomalyDetector().to(cuda)
 ad.load_state_dict(torch.load('models/anomaly.pt'))
@@ -216,10 +216,10 @@ debug = {}
 
 writer = SummaryWriter(log_dir='../../runs')
 plotter = recnn.utils.Plotter(loss, [['value', 'policy']],)
-
+print(env.train_dataloader)
 for epoch in range(n_epochs):
     print(epoch)
-    for batch in tqdm(env.train_dataloader):
+    for batch in tqdm((env.train_dataloader)):
         loss = ddpg_update(batch, params, step=step)
         plotter.log_losses(loss)
         step += 1

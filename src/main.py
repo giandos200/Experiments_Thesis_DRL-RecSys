@@ -56,14 +56,14 @@ batch_size = 25
 dirs = recnn.data.env.DataPath(
     base="",
     embeddings="ml20_pca128.pkl",
-    ratings="ml-20m/ratings.csv",
+    ratings="models/train.csv",
     cache="frame_env.pkl", # cache will generate after you run
     use_cache=True
 )
 env = recnn.data.env.FrameEnv(dirs, frame_size, batch_size)
 
 train = env.train_batch()
-test = env.train_batch()
+test = env.test_batch()
 state, action, reward, next_state, done = recnn.data.get_base_batch(train, device=torch.device('cpu'))
 
 print(state)
@@ -97,7 +97,7 @@ ddpg = recnn.nn.DDPG(policy_net, value_net)
 ddpg = ddpg.to(cuda)
 plotter = recnn.utils.Plotter(ddpg.loss_layout, [['value', 'policy']],)
 
-from IPython.display import clear_output
+#from IPython.display import clear_output
 import matplotlib.pyplot as plt
 #% matplotlib inline
 
@@ -112,7 +112,7 @@ def learn():
             plotter.log_losses(loss)
             ddpg.step()
             if ddpg._step % plot_every == 0:
-                clear_output(True)
+                #clear_output(True)
                 print('step', ddpg._step)
                 test_loss = run_tests()
                 plotter.log_losses(test_loss, test=True)
@@ -200,7 +200,7 @@ def learn():
             plotter.log_losses(loss)
             step += 1
             if step % plot_every == 0:
-                clear_output(True)
+                #clear_output(True)
                 print('step', step)
                 test_loss = run_tests()
                 plotter.log_losses(test_loss, test=True)

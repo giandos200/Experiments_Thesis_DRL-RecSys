@@ -34,7 +34,7 @@ dirs = recnn.data.env.DataPath(
     embeddings="ml20_pca128.pkl",
     ratings="ml-20m/ratings.csv",
     cache="frame_env.pkl", # cache will generate after you run
-    use_cache=True
+    use_cache=False
 )
 env = recnn.data.env.FrameEnv(dirs, frame_size, batch_size)
 
@@ -46,7 +46,10 @@ ddpg.load_state_dict(torch.load('models/ddpg_policy.pt'))
 #test_batch = next(iter(env.test_dataloader))
 train_batch = next(iter(env.train_dataloader))
 state, action, reward, next_state, done = recnn.data.get_base_batch(train_batch)
-
+test_batch = next(iter(env.test_dataloader))
+state2, action2, reward2, next_state2, done2 = recnn.data.get_base_batch(test_batch)
+print(state.size(), state2.size())
+input()
 def rank(gen_action, metric):
     scores = []
     for i in env.base.key_to_id.keys():
