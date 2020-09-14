@@ -28,7 +28,7 @@ meta = json.load(open('parsed/omdb.json'))
 tqdm.pandas()
 frame_size = 10
 batch_size = 1
-# embeddgings: https://drive.google.com/open?id=1EQ_zXBR3DKpmJR3jBgLvt-xoOvArGMsL
+#embeddgings: https://drive.google.com/open?id=1EQ_zXBR3DKpmJR3jBgLvt-xoOvArGMsL
 dirs = recnn.data.env.DataPath(
     base="",
     embeddings="ml20_pca128.pkl",
@@ -38,10 +38,34 @@ dirs = recnn.data.env.DataPath(
 )
 env = recnn.data.env.FrameEnv(dirs, frame_size, batch_size)
 
-ddpg = recnn.nn.models.Actor(1290, 128, 256).to(cuda)
-td3 = recnn.nn.models.Actor(1290, 128, 256).to(cuda)
+ddpg = recnn.nn.models.Actor(129*frame_size, 128, 256).to(cuda)
+
+#td3 = recnn.nn.models.Actor(129*frame_size, 128, 256).to(cuda)
 ddpg.load_state_dict(torch.load('models/ddpg_policy.pt'))
 #td3.load_state_dict(torch.load('models/td3_policy.pt'))
+Qvalue = recnn.nn.models.Critic(129*frame_size, 128, 256).to(cuda)
+Qvalue.load_state_dict(torch.load('models/ddpg_value.pt'))
+
+
+# def recommendation():
+#     recommendations = {}
+#     for u in tqdm(dict.keys()):
+#         for i in range(topk):
+#             state = torch.cat(embeddings[it].flatten(), rat for it, rat, t in dict[u][-frame_size:])
+#             ddpg_action = ddpg(state)
+#             Qvalue_action = Qvalue(ddpg_action)
+#             state.append(ddpg_action, Qvalue_action)
+#             item = similarity(action, embeddings).sort()[-1]
+#             if item in rated[u]:
+#                 repeat
+#             if i = 0:
+#                 recommendations[u] = (item,Qvalue_action)
+#             if i > 0:
+#                 recommendations[u].append(item, Qvalue_action)
+#             ###oppure recommendations[u].append(item, Qvalue_action)
+
+
+
 
 #test_batch = next(iter(env.test_dataloader))
 train_batch = next(iter(env.train_dataloader))
@@ -49,7 +73,7 @@ state, action, reward, next_state, done = recnn.data.get_base_batch(train_batch)
 test_batch = next(iter(env.test_dataloader))
 state2, action2, reward2, next_state2, done2 = recnn.data.get_base_batch(test_batch)
 print(state.size(), state2.size())
-input()
+
 def rank(gen_action, metric):
     scores = []
     for i in env.base.key_to_id.keys():
@@ -73,6 +97,7 @@ ddpg_action = ddpg(state)
 # pick random action
 ddpg_action = ddpg_action[np.random.randint(0, state.size(0), 1)[0]].detach().cpu().numpy()
 
+Qvalue_action = Qvalue(state,ddpg_action)
 from pandas.plotting import table
 import subprocess
 import matplotlib.pyplot as plt
@@ -99,30 +124,30 @@ rank(ddpg_action, distance.cityblock)
 
 ###############TD3##############
 
-td3_action = td3(state)
-# pick random action
-td3_action = td3_action[np.random.randint(0, state.size(0), 1)[0]].detach().cpu().numpy()
-
-from pandas.plotting import table
-import matplotlib.pyplot as plt
-#%matplotlib inline
-
-#from jupyterthemes import jtplot
-#jtplot.style(theme='grade3')
-
-rank(td3_action, distance.euclidean)
-
-rank(td3_action, distance.cosine)
-
-rank(td3_action, distance.correlation) # looks similar to cosine
-
-rank(td3_action, distance.canberra)
-
-rank(td3_action, distance.minkowski)
-
-rank(td3_action, distance.chebyshev)
-
-rank(td3_action, distance.braycurtis)
-
-rank(td3_action, distance.cityblock)
+# td3_action = td3(state)
+# # pick random action
+# td3_action = td3_action[np.random.randint(0, state.size(0), 1)[0]].detach().cpu().numpy()
+#
+# from pandas.plotting import table
+# import matplotlib.pyplot as plt
+# #%matplotlib inline
+#
+# #from jupyterthemes import jtplot
+# #jtplot.style(theme='grade3')
+#
+# rank(td3_action, distance.euclidean)
+#
+# rank(td3_action, distance.cosine)
+#
+# rank(td3_action, distance.correlation) # looks similar to cosine
+#
+# rank(td3_action, distance.canberra)
+#
+# rank(td3_action, distance.minkowski)
+#
+# rank(td3_action, distance.chebyshev)
+#
+# rank(td3_action, distance.braycurtis)
+#
+# rank(td3_action, distance.cityblock)
 

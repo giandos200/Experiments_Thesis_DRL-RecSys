@@ -22,9 +22,9 @@ cuda = torch.device('cuda' if torch.cuda.is_available() else "cpu")
 
 # ---
 frame_size = 10
-batch_size = 5
-n_epochs   = 100
-plot_every = 50
+batch_size = 1
+n_epochs   = 3
+plot_every = 200
 num_items    = 5000 # n items to recommend. Can be adjusted for your vram
 # ---
 
@@ -119,6 +119,10 @@ for epoch in range(n_epochs):
         if reinforce._step % plot_every == 0:
             print('step', reinforce._step)
             plotter.plot_loss()
-        if reinforce._step > 1000:
-            pass
+        # if reinforce._step > 1000:
+        #     pass
             # assert False
+
+torch.save(policy_net.state_dict(), "models/topk_ddpg_policy.pt")
+
+torch.save(value_net.state_dict(), "models/topk_ddpg_value.pt")

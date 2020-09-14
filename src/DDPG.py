@@ -23,7 +23,7 @@ cuda = torch.device('cuda')
 # ---
 frame_size = 10
 batch_size = 25
-n_epochs = 1
+n_epochs = 2
 plot_every = 200
 step = 0
 # ---
@@ -218,7 +218,7 @@ writer = SummaryWriter(log_dir='../../runs')
 plotter = recnn.utils.Plotter(loss, [['value', 'policy']],)
 print(env.train_dataloader)
 for epoch in range(n_epochs):
-    print(epoch)
+    #print(epoch)
     for batch in tqdm((env.train_dataloader)):
         loss = ddpg_update(batch, params, step=step)
         plotter.log_losses(loss)

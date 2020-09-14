@@ -229,8 +229,13 @@ cython_debug/
 src/models
 src/ml-20m
 src/parsed
-!src/cache_frame_env.pkl
-!src/frame_env_truncated.pkl
-!src/cached_frame_env.pkl
-!src/frame_env.pkl
+src/cache_frame_env.pkl
+src/frame_env_truncated.pkl
+src/cached_frame_env.pkl
+src/frame_env.pkl
 /src/ml20_pca128.pkl
+/src/dict_vari/
+/src/dict_vari/Dict_userBased
+/src/dict_vari/Rated_train.pkl
+/src/dict_vari/
+
