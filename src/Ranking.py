@@ -11,7 +11,7 @@ import pickle
 import gc
 import json
 import pandas as pd
-
+from numba import jit
 import matplotlib.pyplot as plt
 #%matplotlib inline
 
@@ -20,6 +20,14 @@ import sys
 sys.path.append("../../")
 import recnn
 
+with open("ml20_pca128.pkl", 'rb') as f:
+    embedding = pickle.load(f)
+
+with open("dict_vari/Rated_train.pkl", 'rb') as f:
+    Rated = pickle.load(f)
+
+with open("models/train.pkl", 'rb') as f:
+    train_dict = pickle.load(f)
 
 cuda = torch.device('cuda')
 frame_size = 10
@@ -29,14 +37,14 @@ tqdm.pandas()
 frame_size = 10
 batch_size = 1
 #embeddgings: https://drive.google.com/open?id=1EQ_zXBR3DKpmJR3jBgLvt-xoOvArGMsL
-dirs = recnn.data.env.DataPath(
-    base="",
-    embeddings="ml20_pca128.pkl",
-    ratings="ml-20m/ratings.csv",
-    cache="frame_env.pkl", # cache will generate after you run
-    use_cache=False
-)
-env = recnn.data.env.FrameEnv(dirs, frame_size, batch_size)
+# dirs = recnn.data.env.DataPath(
+#     base="",
+#     embeddings="ml20_pca128.pkl",
+#     ratings="ml-20m/ratings.csv",
+#     cache="frame_env.pkl", # cache will generate after you run
+#     use_cache=False
+# )
+# env = recnn.data.env.FrameEnv(dirs, frame_size, batch_size)
 
 ddpg = recnn.nn.models.Actor(129*frame_size, 128, 256).to(cuda)
 
@@ -46,32 +54,60 @@ ddpg.load_state_dict(torch.load('models/ddpg_policy.pt'))
 Qvalue = recnn.nn.models.Critic(129*frame_size, 128, 256).to(cuda)
 Qvalue.load_state_dict(torch.load('models/ddpg_value.pt'))
 
+@jit(nopython=True)
+def cosine_similarity_numba(u:np.ndarray, v:np.ndarray):
+    assert(u.shape[0] == v.shape[0])
+    uv = 0
+    uu = 0
+    vv = 0
+    for i in range(u.shape[0]):
+        uv += u[i]*v[i]
+        uu += u[i]*u[i]
+        vv += v[i]*v[i]
+    cos_theta = 1
+    if uu!=0 and vv!=0:
+        cos_theta -= uv/np.sqrt(uu*vv)
+    return np.abs(cos_theta)
 
-# def recommendation():
-#     recommendations = {}
-#     for u in tqdm(dict.keys()):
-#         for i in range(topk):
-#             state = torch.cat(embeddings[it].flatten(), rat for it, rat, t in dict[u][-frame_size:])
-#             ddpg_action = ddpg(state)
-#             Qvalue_action = Qvalue(ddpg_action)
-#             state.append(ddpg_action, Qvalue_action)
-#             item = similarity(action, embeddings).sort()[-1]
-#             if item in rated[u]:
-#                 repeat
-#             if i = 0:
-#                 recommendations[u] = (item,Qvalue_action)
-#             if i > 0:
-#                 recommendations[u].append(item, Qvalue_action)
-#             ###oppure recommendations[u].append(item, Qvalue_action)
+#@jit(nopython=True)
+def recommendation(dict, embeddings, metric, rated, topk, frame_size):
+    recommendations = {}
+    for u in tqdm(dict.keys()):
+        state = []
+        for i in range(topk):
+            if i == 0:
+                state = [np.append(embeddings[it].numpy(), rat) for it, rat, t in dict[u][-frame_size:]]
+                state = (torch.from_numpy(np.asarray(state).flatten()).float()).to(cuda)
+            ddpg_action = ddpg(state)
+            Qvalue_action = Qvalue(state, ddpg_action)
+            state = torch.cat([state[129:],torch.cat([ddpg_action,Qvalue_action])])
+            ddpg_action = ddpg_action.detach().cpu().numpy()
+            Qvalue_action = Qvalue_action.detach().cpu().numpy()
+            scores = []
+            for j in embeddings.keys():
+                if j in rated[u]:
+                    pass
+                else:
+                    scores.append([j, metric(embeddings[j].numpy(), ddpg_action)])
+            scores = list(sorted(scores, key=lambda x: x[1]))[0]
+            if i == 0:
+                recommendations[u] = [scores, Qvalue_action]
+            else:
+                recommendations[u].append([scores,Qvalue_action])
 
+    return recommendations
 
+Dict_rec = recommendation(train_dict, embedding, cosine_similarity_numba, Rated, topk=10, frame_size=10)
 
+input()
 
 #test_batch = next(iter(env.test_dataloader))
 train_batch = next(iter(env.train_dataloader))
 state, action, reward, next_state, done = recnn.data.get_base_batch(train_batch)
 test_batch = next(iter(env.test_dataloader))
 state2, action2, reward2, next_state2, done2 = recnn.data.get_base_batch(test_batch)
+iola = state[0]
+iola2 = action[0]
 print(state.size(), state2.size())
 
 def rank(gen_action, metric):
@@ -97,7 +133,7 @@ ddpg_action = ddpg(state)
 # pick random action
 ddpg_action = ddpg_action[np.random.randint(0, state.size(0), 1)[0]].detach().cpu().numpy()
 
-Qvalue_action = Qvalue(state,ddpg_action)
+Qvalue_action = Qvalue(iola,iola2)
 from pandas.plotting import table
 import subprocess
 import matplotlib.pyplot as plt
