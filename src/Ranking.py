@@ -74,6 +74,7 @@ def recommendation(dict, embeddings, cos, rated, topk, frame_size):
     recommendations = {}
     for u in tqdm(dict.keys()):
         state = []
+        scores = []
         for i in range(topk):
             if i == 0:
                 list1 = torch.cat([embeddings[it] for it, rat, t in dict[u][-frame_size:]], dim=0)
@@ -94,26 +95,19 @@ def recommendation(dict, embeddings, cos, rated, topk, frame_size):
             #     else:
             #         scores.append([j, metric(embeddings[j].numpy(), ddpg_action)])
             output = torch.abs(1-cos(ddpg_action.unsqueeze(0), env.base.embeddings.to(cuda))).cpu()
-            scores = env.base.id_to_key[torch.argmin(output).item()], torch.min(output).item()
-            if scores[0] in Rated[u]:
+            scores.append([env.base.id_to_key[torch.argmin(output).item()], torch.min(output).item(), Qvalue_action])
+            if scores[i][0] in Rated[u]:
                  sorte, index = torch.sort(output)
-                 x=0
-                 scores = env.base.id_to_key[index[x+1].cpu().item()], sorte[x+1]
                  for v in (env.base.id_to_key.keys()):
+                     scores[i][0:2] = env.base.id_to_key[index[v + 1].item()], sorte[v + 1].item()
                      if scores[0] in Rated[u]:
-                         x += 1
-                         scores = env.base.id_to_key[index[x+1].cpu().item()], sorte[x+1]
+                         return
                      else:
                          break
-                 if i == 0:
-                     recommendations[u] = [scores, Qvalue_action]
-                 else:
-                     recommendations[u].append([scores, Qvalue_action])
+            if i == 0:
+                recommendations[u] = scores
             else:
-                if i == 0:
-                    recommendations[u] = [scores, Qvalue_action]
-                else:
-                    recommendations[u].append([scores, Qvalue_action])
+                recommendations[u].append(scores)
 
             # scores = list(sorted(scores, key=lambda x: x[1]))[0]
             # if i == 0:
