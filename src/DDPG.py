@@ -24,7 +24,7 @@ cuda = torch.device('cuda')
 frame_size = 10
 batch_size = 25
 n_epochs = 2
-plot_every = 200
+plot_every = 30
 step = 0
 # ---
 
