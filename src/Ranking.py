@@ -35,7 +35,7 @@ batch_size = 1
 dirs = recnn.data.env.DataPath(
     base="",
     embeddings="ml20_pca128.pkl",
-    ratings="dict_vari/test_notab.csv",
+    ratings="dict_vari/train.csv",
     cache="frame_env.pkl",  # cache will generate after you run
     use_cache=False
 )
@@ -69,7 +69,7 @@ def cosine_similarity_numba(u: np.ndarray, v: np.ndarray):
 x = env.base.embeddings
 
 
-# @jit(nopython=True)
+
 def recommendation(dict, embeddings, cos, rated, topk, frame_size):
     recommendations = {}
     for u in tqdm(dict.keys()):
@@ -80,23 +80,13 @@ def recommendation(dict, embeddings, cos, rated, topk, frame_size):
                 list1 = torch.cat([embeddings[it] for it, rat, t in dict[u][-frame_size:]], dim=0)
                 rat = torch.FloatTensor([rat for it, rat, t in dict[u][-frame_size:]])
                 state = torch.cat([list1, rat]).to(cuda)
-                # state = [np.append(embeddings[it].numpy(), rat) for it, rat, t in dict[u][-frame_size:]]
-                # state = (torch.from_numpy(np.asarray(state).flatten()).float()).to(cuda)
             ddpg_action = ddpg(state)
             Qvalue_action = Qvalue(state, ddpg_action)
             state = torch.cat([torch.cat([state[128:128 * (frame_size)], ddpg_action]), torch.cat([state[-9:], Qvalue_action])])
-            # state = torch.cat([state[129:],torch.cat([ddpg_action,Qvalue_action])])
-            # ddpg_action = ddpg_action.detach().cpu().numpy()
             Qvalue_action = Qvalue_action.detach().cpu().item()
-            # scores = []
-            # for j in embeddings.keys():
-            #     if j in rated[u]:
-            #         pass
-            #     else:
-            #         scores.append([j, metric(embeddings[j].numpy(), ddpg_action)])
             output = torch.abs(1-cos(ddpg_action.unsqueeze(0), env.base.embeddings.to(cuda))).cpu()
             scores.append([env.base.id_to_key[torch.argmin(output).item()], torch.min(output).item(), Qvalue_action])
-            if scores[i][0] in Rated[u]:
+            if scores[i][0] in rated[u]:
                  sorte, index = torch.sort(output)
                  for v in (env.base.id_to_key.keys()):
                      scores[i][0:2] = env.base.id_to_key[index[v + 1].item()], sorte[v + 1].item()
@@ -109,18 +99,12 @@ def recommendation(dict, embeddings, cos, rated, topk, frame_size):
             else:
                 recommendations[u].append(scores)
 
-            # scores = list(sorted(scores, key=lambda x: x[1]))[0]
-            # if i == 0:
-            # recommendations[u] = [scores, Qvalue_action]
-            # else:
-            # recommendations[u].append([scores, Qvalue_action])
-
     return recommendations
 
 
 cos = nn.CosineSimilarity(dim=1, eps=1e-6)
 #cos = nn.DataParallel(cos, device_ids=[0,1,2,3])
-Dict_rec = recommendation(train_dict, embedding, cos, Rated, topk=10, frame_size=10)
+Dict_rec = recommendation(train_dict, embedding, cos, Rated, topk=100, frame_size=10)
 
 input()
 

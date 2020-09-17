@@ -1,230 +1,340 @@
-# from quantastica.qiskit_forest import ForestBackend
-# from qiskit import QuantumRegister, ClassicalRegister
-# from qiskit import QuantumCircuit, execute, Aer
-#
-# # Import ForestBackend:
-# from quantastica.qiskit_forest import ForestBackend
-#
-# qc = QuantumCircuit()
-#
-# q = QuantumRegister(2, "q")
-# c = ClassicalRegister(2, "c")
-#
-# qc.add_register(q)
-# qc.add_register(c)
-#
-# qc.h(q[0])
-# qc.cx(q[0], q[1])
-#
-# qc.measure(q[0], c[0])
-# qc.measure(q[1], c[1])
-#
-#
-# # Instead:
-# #backend = Aer.get_backend("qasm_simulator")
-#
-# # Use:
-# backend = ForestBackend.get_backend("qasm_simulator")
-#
-# # OR:
-# # backend = ForestBackend.get_backend("statevector_simulator")
-# # backend = ForestBackend.get_backend("Aspen-7-28Q-A")
-# # backend = ForestBackend.get_backend("Aspen-7-28Q-A", as_qvm=True)
-# # ...
-#
-# # To speed things up a little bit qiskit's optimization can be disabled
-# # by setting optimization_level to 0 like following:
-# # job = execute(qc, backend=backend, optimization_level=0)
-# job = execute(qc, backend=backend)
-# job_result = job.result()
-#
-# print(job_result.get_counts(qc))
-
-import recnn
-
-import recnn
 import torch
 import torch.nn as nn
-from recnn.nn.update import ddpg
+from torch.utils.tensorboard import SummaryWriter
+import torch.nn.functional as F
+import torch_optimizer as optim
+
+import numpy as np
+import pandas as pd3072
 from tqdm.auto import tqdm
+
+
+import matplotlib.pyplot as plt
+#%matplotlib inline
+
+
+# == recnn ==
+import sys
+sys.path.append("../../")
+import recnn
+
+cuda = torch.device('cuda')
+
+# ---
+frame_size = 10
+batch_size = 25
+n_epochs = 2
+plot_every = 50
+step = 0
+# ---
 
 tqdm.pandas()
 
-frame_size = 10
-batch_size = 25
 # embeddgings: https://drive.google.com/open?id=1EQ_zXBR3DKpmJR3jBgLvt-xoOvArGMsL
 dirs = recnn.data.env.DataPath(
     base="",
     embeddings="ml20_pca128.pkl",
     ratings="models/train.csv",
     cache="frame_env.pkl", # cache will generate after you run
-    use_cache=True
+    use_cache=False
 )
 env = recnn.data.env.FrameEnv(dirs, frame_size, batch_size)
 
-train = env.train_batch()
-test = env.test_batch()
-state, action, reward, next_state, done = recnn.data.get_base_batch(train, device=torch.device('cpu'))
 
-print(state)
-value_net  = recnn.nn.Critic(1290, 128, 256, 54e-2)
-policy_net = recnn.nn.Actor(1290, 128, 256, 6e-1)
+class Actor(nn.Module):
+    def __init__(self, input_dim, action_dim, hidden_size, init_w=3e-1):
+        super(Actor, self).__init__()
 
-recommendation = policy_net(state)
-value = value_net(state, recommendation)
-print(recommendation)
-print(value)
+        self.drop_layer = nn.Dropout(p=0.5)
 
-# ddpg = recnn.nn.DDPG(policy_net, value_net)
-# print(ddpg.params)
-# ddpg.params['gamma'] = 0.9
-# ddpg.params['policy_step'] = 3
-# ddpg.optimizers['policy_optimizer'] = torch.optim.Adam(ddpg.nets['policy_net'], your_lr)
-# ddpg.writer = torch.utils.tensorboard.SummaryWriter('./runs')
-# ddpg = ddpg.to(torch.device('cuda'))
+        self.linear1 = nn.Linear(input_dim, hidden_size)
+        self.linear2 = nn.Linear(hidden_size, hidden_size)
+        self.linear3 = nn.Linear(hidden_size, action_dim)
 
-# test function
+        self.linear3.weight.data.uniform_(-init_w, init_w)
+        self.linear3.bias.data.uniform_(-init_w, init_w)
+
+    def forward(self, state):
+        # state = self.state_rep(state)
+        x = F.relu(self.linear1(state))
+        x = self.drop_layer(x)
+        x = F.relu(self.linear2(x))
+        x = self.drop_layer(x)
+        # x = torch.tanh(self.linear3(x)) # in case embeds are -1 1 normalized
+        x = self.linear3(x)  # in case embeds are standard scaled / wiped using PCA whitening
+        # return state, x
+        return x
+
+
+class Critic(nn.Module):
+    def __init__(self, input_dim, action_dim, hidden_size, init_w=3e-5):
+        super(Critic, self).__init__()
+
+        self.drop_layer = nn.Dropout(p=0.5)
+
+        self.linear1 = nn.Linear(input_dim + action_dim, hidden_size)
+        self.linear2 = nn.Linear(hidden_size, hidden_size)
+        self.linear3 = nn.Linear(hidden_size, 1)
+
+        self.linear3.weight.data.uniform_(-init_w, init_w)
+        self.linear3.bias.data.uniform_(-init_w, init_w)
+
+    def forward(self, state, action):
+        x = torch.cat([state, action], 1)
+        x = F.relu(self.linear1(x))
+        x = self.drop_layer(x)
+        x = F.relu(self.linear2(x))
+        x = self.drop_layer(x)
+        x = self.linear3(x)
+        return x
+
+
+def soft_update(net, target_net, soft_tau=1e-2):
+    for target_param, param in zip(target_net.parameters(), net.parameters()):
+        target_param.data.copy_(
+            target_param.data * (1.0 - soft_tau) + param.data * soft_tau
+        )
+
+
 def run_tests():
-    batch = next(iter(env.test_dataloader))
-    loss = ddpg.update(batch, learn=False)
-    return loss
+    test_batch = next(iter(env.test_dataloader))
+    losses = ddpg_update(test_batch, params, learn=False, step=step)
 
-value_net  = recnn.nn.Critic(1290, 128, 256, 54e-2)
-policy_net = recnn.nn.Actor(1290, 128, 256, 6e-1)
+    gen_actions = debug['next_action']
+    true_actions = env.base.embeddings.detach().cpu().numpy()
 
-cuda = torch.device('cuda')
-ddpg = recnn.nn.DDPG(policy_net, value_net)
-ddpg = ddpg.to(cuda)
-plotter = recnn.utils.Plotter(ddpg.loss_layout, [['value', 'policy']],)
-
-#from IPython.display import clear_output
-import matplotlib.pyplot as plt
-#% matplotlib inline
-
-plot_every = 100
-n_epochs = 2
+    f = plotter.kde_reconstruction_error(ad, gen_actions, true_actions, cuda)
+    writer.add_figure('rec_error', f, losses['step'])
+    return losses
 
 
-def learn():
-    for epoch in range(n_epochs):
-        for batch in tqdm(env.train_dataloader):
-            loss = ddpg.update(batch, learn=True)
-            plotter.log_losses(loss)
-            ddpg.step()
-            if ddpg._step % plot_every == 0:
-                #clear_output(True)
-                print('step', ddpg._step)
-                test_loss = run_tests()
-                plotter.log_losses(test_loss, test=True)
-                plotter.plot_loss()
-            if ddpg._step > 1000:
-                return
+def ddpg_update(batch, params, learn=True, step=-1):
+    state, action, reward, next_state, done = recnn.data.get_base_batch(batch)
+
+    # --------------------------------------------------------#
+    # Value Learning
+
+    with torch.no_grad():
+        next_action = target_policy_net(next_state)
+        target_value = target_value_net(next_state, next_action.detach())
+        expected_value = reward + (1.0 - done) * params['gamma'] * target_value
+        expected_value = torch.clamp(expected_value,
+                                     params['min_value'], params['max_value'])
+
+    value = value_net(state, action)
+
+    value_loss = torch.pow(value - expected_value.detach(), 2).mean()
+
+    if learn:
+        value_optimizer.zero_grad()
+        value_loss.backward()
+        value_optimizer.step()
+    else:
+        debug['next_action'] = next_action
+        writer.add_figure('next_action',
+                          recnn.utils.pairwise_distances_fig(next_action[:50]), step)
+        writer.add_histogram('value', value, step)
+        writer.add_histogram('target_value', target_value, step)
+        writer.add_histogram('expected_value', expected_value, step)
+
+    # --------------------------------------------------------#
+    # Policy learning
+
+    gen_action = policy_net(state)
+    policy_loss = -value_net(state, gen_action)
+
+    if not learn:
+        debug['gen_action'] = gen_action
+        writer.add_histogram('policy_loss', policy_loss, step)
+        writer.add_figure('next_action',
+                          recnn.utils.pairwise_distances_fig(gen_action[:50]), step)
+
+    policy_loss = policy_loss.mean()
+
+    if learn and step % params['policy_step'] == 0:
+        policy_optimizer.zero_grad()
+        policy_loss.backward()
+        torch.nn.utils.clip_grad_norm_(policy_net.parameters(), -1, 1)
+        policy_optimizer.step()
+
+        soft_update(value_net, target_value_net, soft_tau=params['soft_tau'])
+        soft_update(policy_net, target_policy_net, soft_tau=params['soft_tau'])
+
+    losses = {'value': value_loss.item(), 'policy': policy_loss.item(), 'step': step}
+    recnn.utils.write_losses(writer, losses, kind='train' if learn else 'test')
+    return losses
 
 
-learn()
+# === ddpg settings ===
 
-value_net  = recnn.nn.Critic(1290, 128, 256, 54e-2)
-policy_net = recnn.nn.Actor(1290, 128, 256, 6e-1)
-# these are target networks that we need for ddpg algorigm to work
-target_value_net = recnn.nn.Critic(1290, 128, 256)
-target_policy_net = recnn.nn.Actor(1290, 128, 256)
+params = {
+    'gamma': 0.99,
+    'min_value': -10,
+    'max_value': 10,
+    'policy_step': 10,
+    'soft_tau': 0.001,
+
+    'policy_lr': 1e-5,
+    'value_lr': 1e-5,
+    'actor_weight_init': 54e-2,
+    'critic_weight_init': 6e-1,
+}
+
+# === end ===
+
+value_net = Critic(129*frame_size, 128, 256, params['critic_weight_init']).to(cuda)
+policy_net = Actor(129*frame_size, 128, 256, params['actor_weight_init']).to(cuda)
+
+
+target_value_net = Critic(129*frame_size, 128, 256).to(cuda)
+target_policy_net = Actor(129*frame_size, 128, 256).to(cuda)
+
+ad = recnn.nn.models.AnomalyDetector().to(cuda)
+ad.load_state_dict(torch.load('models/anomaly.pt'))
+ad.eval()
 
 target_policy_net.eval()
 target_value_net.eval()
-import torch_optimizer as optim
 
-# soft update
-recnn.utils.soft_update(value_net, target_value_net, soft_tau=1.0)
-recnn.utils.soft_update(policy_net, target_policy_net, soft_tau=1.0)
+soft_update(value_net, target_value_net, soft_tau=1.0)
+soft_update(policy_net, target_policy_net, soft_tau=1.0)
 
-# define optimizers
-value_optimizer = optim.RAdam(value_net.parameters(),
-                              lr=1e-5, weight_decay=1e-2)
-policy_optimizer = optim.RAdam(policy_net.parameters(), lr=1e-5 , weight_decay=1e-2)
+value_criterion = nn.MSELoss()
 
-nets = {
-    'value_net': value_net.to(cuda),
-    'target_value_net': target_value_net.to(cuda),
-    'policy_net': policy_net.to(cuda),
-    'target_policy_net': target_policy_net.to(cuda),
-}
+# from good to bad: Ranger Radam Adam RMSprop
+value_optimizer = optim.Ranger(value_net.parameters(), #####CAMBIATO RANGER CON RADAM
+                              lr=params['value_lr'], weight_decay=1e-2)
+policy_optimizer = optim.Ranger(policy_net.parameters(),
+                               lr=params['policy_lr'], weight_decay=1e-5)
 
-optimizer = {
-    'policy_optimizer': policy_optimizer,
-    'value_optimizer':  value_optimizer
-}
-
-debug = {}
-writer = recnn.utils.misc.DummyWriter()
-step = 0
-params = {
-    'gamma'      : 0.1,
-    'min_value'  : -10,
-    'max_value'  : 10,
-    'policy_step': 10,
-    'soft_tau'   : 0.001,
-}
-batch = {'state': state, 'action': action, 'reward': reward, 'next_state': next_state, 'done':done}
-loss = recnn.nn.update.ddpg_update(batch, params, nets, optimizer, cuda, debug, writer, step=step)
-print(loss)
-
-cuda = torch.device('cuda')
 loss = {
     'test': {'value': [], 'policy': [], 'step': []},
     'train': {'value': [], 'policy': [], 'step': []}
     }
 
+debug = {}
+
+writer = SummaryWriter(log_dir='../../runs')
 plotter = recnn.utils.Plotter(loss, [['value', 'policy']],)
-# test function
-def run_tests():
-    batch = next(iter(env.test_dataloader))
-    loss = recnn.nn.ddpg_update(batch, params, nets, optimizer,
-                       cuda, debug, writer, step=step, learn=False)
-    return loss
+print(env.train_dataloader)
+for epoch in range(n_epochs):
+    #print(epoch)
+    for batch in tqdm((env.train_dataloader)):
+        loss = ddpg_update(batch, params, step=step)
+        plotter.log_losses(loss)
+        step += 1
+        if step % plot_every == 0:
+            print('epoch:', epoch,'   ','step', step)
+            test_loss = run_tests()
+            plotter.log_losses(test_loss, test=True)
+            plotter.plot_loss()
 
 
-import matplotlib.pyplot as plt
-#% matplotlib inline
+torch.save(policy_net.state_dict(), "frame_s10_gamma_0_99/ddpg_policy.pt")
 
-plot_every = 50
-n_epochs = 2
+torch.save(value_net.state_dict(), "frame_s10_gamma_0_99/ddpg_value.pt")
+
+import json
+import pickle
+# == recnn ==
+import sys
+import torch.nn as nn
+
+import numpy as np
+import pandas as pd
+import torch
+from numba import jit
+from scipy.spatial import distance
+from tqdm.auto import tqdm
+
+# %matplotlib inline
+sys.path.append("../../")
+import recnn
+
+with open("ml20_pca128.pkl", 'rb') as f:
+    embedding = pickle.load(f)
+
+with open("dict_vari/Rated_train.pkl", 'rb') as f:
+    Rated = pickle.load(f)
+
+with open("models/train.pkl", 'rb') as f:
+    train_dict = pickle.load(f)
+
+cuda = torch.device('cuda')
+
+# https://drive.google.com/open?id=1t0LNCbqLjiLkAMFwtP8OIYU-zPUCNAjK
+#meta = json.load(open('parsed/omdb.json'))
+tqdm.pandas()
+batch_size = 1
+# embeddgings: https://drive.google.com/open?id=1EQ_zXBR3DKpmJR3jBgLvt-xoOvArGMsL
+
+# ddpg = Actor(129 * frame_size, 128, 256).to(cuda)
+#
+# # td3 = recnn.nn.models.Actor(129*frame_size, 128, 256).to(cuda)
+# ddpg.load_state_dict(torch.load('models/ddpg_policy.pt')) #policy
+# # td3.load_state_dict(torch.load('models/td3_policy.pt'))
+# Qvalue = Critic(129 * frame_size, 128, 256).to(cuda)
+# Qvalue.load_state_dict(torch.load('models/ddpg_value.pt')) #value
+ddpg = policy_net
+
+Qvalue = value_net
+
+@jit(nopython=True)
+def cosine_similarity_numba(u: np.ndarray, v: np.ndarray):
+    assert (u.shape[0] == v.shape[0])
+    uv = 0
+    uu = 0
+    vv = 0
+    for i in range(u.shape[0]):
+        uv += u[i] * v[i]
+        uu += u[i] * u[i]
+        vv += v[i] * v[i]
+    cos_theta = 1
+    if uu != 0 and vv != 0:
+        cos_theta -= uv / np.sqrt(uu * vv)
+    return np.abs(cos_theta)
 
 
-def learn():
-    step = 0
-    for epoch in range(n_epochs):
-        for batch in tqdm(env.train_dataloader):
-            loss = recnn.nn.ddpg_update(batch, params,
-                                        nets, optimizer, cuda, debug,
-                                        writer, step=step)
-            plotter.log_losses(loss)
-            step += 1
-            if step % plot_every == 0:
-                #clear_output(True)
-                print('step', step)
-                test_loss = run_tests()
-                plotter.log_losses(test_loss, test=True)
-                plotter.plot_loss()
-            if step > 1000:
-                return
+x = env.base.embeddings
 
 
-learn()
-def plot_grad_flow(named_parameters):
-    ave_grads = []
-    layers = []
-    for n, p in named_parameters:
-        if(p.requires_grad) and ("bias" not in n):
-            print('plotting', n)
-            layers.append(n)
-            ave_grads.append(p.grad.abs().mean())
-    plt.plot(ave_grads, alpha=0.3, color="b")
-    plt.hlines(0, 0, len(ave_grads)+1, linewidth=1, color="k" )
-    plt.xticks(range(0,len(ave_grads), 1), layers, rotation="vertical")
-    plt.xlim(xmin=0, xmax=len(ave_grads))
-    plt.xlabel("Layers")
-    plt.ylabel("average gradient")
-    plt.title("Gradient flow")
-    plt.grid(True)
 
-plot_grad_flow(ddpg.nets['policy_net'].named_parameters())
+def recommendation(dict, embeddings, cos, rated, topk, frame_size):
+    recommendations = {}
+    for u in tqdm(dict.keys()):
+        state = []
+        scores = []
+        for i in range(topk):
+            if i == 0:
+                list1 = torch.cat([embeddings[it] for it, rat, t in dict[u][-frame_size:]], dim=0)
+                rat = torch.FloatTensor([rat for it, rat, t in dict[u][-frame_size:]])
+                state = torch.cat([list1, rat]).to(cuda)
+            ddpg_action = ddpg(state)
+            Qvalue_action = Qvalue(state, ddpg_action)
+            state = torch.cat([torch.cat([state[128:128 * (frame_size)], ddpg_action]), torch.cat([state[-9:], Qvalue_action])])
+            Qvalue_action = Qvalue_action.detach().cpu().item()
+            output = torch.abs(1-cos(ddpg_action.unsqueeze(0), env.base.embeddings.to(cuda))).cpu()
+            scores.append([env.base.id_to_key[torch.argmin(output).item()], torch.min(output).item(), Qvalue_action])
+            if scores[i][0] in rated[u]:
+                 sorte, index = torch.sort(output)
+                 for v in (env.base.id_to_key.keys()):
+                     scores[i][0:2] = env.base.id_to_key[index[v + 1].item()], sorte[v + 1].item()
+                     if scores[0] in Rated[u]:
+                         return
+                     else:
+                         break
+            if i == 0:
+                recommendations[u] = scores
+            else:
+                recommendations[u].append(scores)
+
+    return recommendations
+
+
+cos = nn.CosineSimilarity(dim=1, eps=1e-6)
+#cos = nn.DataParallel(cos, device_ids=[0,1,2,3])
+Dict_rec = recommendation(train_dict, embedding, cos, Rated, topk=100, frame_size=10)
+
+with open('frame_s10_gamma_0_99/rec.pkl', 'wb') as f:
+    pickle.dump(Dict_rec,f)
+    f.close()

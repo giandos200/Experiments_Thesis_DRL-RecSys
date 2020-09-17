@@ -228,27 +228,6 @@ for epoch in range(n_epochs):
             test_loss = run_tests()
             plotter.log_losses(test_loss, test=True)
             plotter.plot_loss()
-        # if step > 5000:
-        #     assert False
-#
-# def learn(step, n_epochs):
-#     for epoch in range(n_epochs):
-#         for batch in tqdm(env.train_dataloader):
-#             loss = ddpg_update(batch, params, step=step, learn=True)
-#             plotter.log_losses(loss)
-#             step += 1
-#             if step % plot_every == 0:
-#                 #clear_output(True)
-#                 print('step', step)
-#                 test_loss = run_tests()
-#                 plotter.log_losses(test_loss, test=True)
-#                 plotter.plot_loss()
-#             if step > 5000:
-#                 return
-#
-#
-# learn(step, n_epochs)
-#
 
 torch.save(policy_net.state_dict(), "models/ddpg_policy.pt")
 
