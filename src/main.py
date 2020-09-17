@@ -22,9 +22,9 @@ cuda = torch.device('cuda')
 
 # ---
 frame_size = 10
-batch_size = 25
+batch_size = 50
 n_epochs = 2
-plot_every = 50
+plot_every = 100
 step = 0
 # ---
 
@@ -268,16 +268,16 @@ tqdm.pandas()
 batch_size = 1
 # embeddgings: https://drive.google.com/open?id=1EQ_zXBR3DKpmJR3jBgLvt-xoOvArGMsL
 
-# ddpg = Actor(129 * frame_size, 128, 256).to(cuda)
-#
-# # td3 = recnn.nn.models.Actor(129*frame_size, 128, 256).to(cuda)
-# ddpg.load_state_dict(torch.load('models/ddpg_policy.pt')) #policy
-# # td3.load_state_dict(torch.load('models/td3_policy.pt'))
-# Qvalue = Critic(129 * frame_size, 128, 256).to(cuda)
-# Qvalue.load_state_dict(torch.load('models/ddpg_value.pt')) #value
-ddpg = policy_net
+ddpg = recnn.nn.models.Actor(129 * frame_size, 128, 256).to(cuda)
 
-Qvalue = value_net
+# td3 = recnn.nn.models.Actor(129*frame_size, 128, 256).to(cuda)
+ddpg.load_state_dict(torch.load('frame_s10_gamma_0_99/ddpg_policy.pt')) #policy
+# td3.load_state_dict(torch.load('models/td3_policy.pt'))
+Qvalue = recnn.nn.models.Critic(129 * frame_size, 128, 256).to(cuda)
+Qvalue.load_state_dict(torch.load('frame_s10_gamma_0_99/ddpg_value.pt')) #value
+#ddpg = policy_net
+
+#Qvalue = value_net
 
 @jit(nopython=True)
 def cosine_similarity_numba(u: np.ndarray, v: np.ndarray):
