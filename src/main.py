@@ -21,10 +21,10 @@ import recnn
 cuda = torch.device('cuda')
 
 # ---
-frame_size = 10
+frame_size = 5
 batch_size = 50
-n_epochs = 2
-plot_every = 100
+n_epochs = 4
+plot_every = 500
 step = 0
 # ---
 
@@ -230,9 +230,9 @@ for epoch in range(n_epochs):
             plotter.plot_loss()
 
 
-torch.save(policy_net.state_dict(), "frame_s10_gamma_0_99/ddpg_policy.pt")
+torch.save(policy_net.state_dict(), "frame_s5_gamma_0_99/ddpg_policy.pt")
 
-torch.save(value_net.state_dict(), "frame_s10_gamma_0_99/ddpg_value.pt")
+torch.save(value_net.state_dict(), "frame_s5_gamma_0_99/ddpg_value.pt")
 
 import json
 import pickle
@@ -271,10 +271,10 @@ batch_size = 1
 ddpg = recnn.nn.models.Actor(129 * frame_size, 128, 256).to(cuda)
 
 # td3 = recnn.nn.models.Actor(129*frame_size, 128, 256).to(cuda)
-ddpg.load_state_dict(torch.load('frame_s10_gamma_0_99/ddpg_policy.pt')) #policy
+ddpg.load_state_dict(torch.load('frame_s5_gamma_0_99/ddpg_policy.pt')) #policy
 # td3.load_state_dict(torch.load('models/td3_policy.pt'))
 Qvalue = recnn.nn.models.Critic(129 * frame_size, 128, 256).to(cuda)
-Qvalue.load_state_dict(torch.load('frame_s10_gamma_0_99/ddpg_value.pt')) #value
+Qvalue.load_state_dict(torch.load('frame_s5_gamma_0_99/ddpg_value.pt')) #value
 #ddpg = policy_net
 
 #Qvalue = value_net
@@ -303,38 +303,42 @@ def recommendation(dict, embeddings, cos, rated, topk, frame_size):
     recommendations = {}
     for u in tqdm(dict.keys()):
         state = []
-        scores = []
         for i in range(topk):
             if i == 0:
                 list1 = torch.cat([embeddings[it] for it, rat, t in dict[u][-frame_size:]], dim=0)
                 rat = torch.FloatTensor([rat for it, rat, t in dict[u][-frame_size:]])
                 state = torch.cat([list1, rat]).to(cuda)
             ddpg_action = ddpg(state)
-            Qvalue_action = Qvalue(state, ddpg_action)
-            state = torch.cat([torch.cat([state[128:128 * (frame_size)], ddpg_action]), torch.cat([state[-9:], Qvalue_action])])
-            Qvalue_action = Qvalue_action.detach().cpu().item()
+            #Qvalue_action = Qvalue(state, ddpg_action)
+            #Qvalue_action = Qvalue_action.detach().cpu().item()
             output = torch.abs(1-cos(ddpg_action.unsqueeze(0), env.base.embeddings.to(cuda))).cpu()
-            scores.append([env.base.id_to_key[torch.argmin(output).item()], torch.min(output).item(), Qvalue_action])
-            if scores[i][0] in rated[u]:
+            item = env.base.embeddings[torch.argmin(output).item()].to(cuda)
+            Qvalue_action = Qvalue(state, item)
+            scores = (env.base.id_to_key[torch.argmin(output).item()], torch.min(output).item(), Qvalue_action.cpu().item())
+            if scores[0] in rated[u] or Qvalue_action < 0:
                  sorte, index = torch.sort(output)
                  for v in (env.base.id_to_key.keys()):
-                     scores[i][0:2] = env.base.id_to_key[index[v + 1].item()], sorte[v + 1].item()
-                     if scores[0] in Rated[u]:
-                         return
+                     item = env.base.embeddings[index[v + 1].item()].to(cuda)
+                     Qvalue_action = Qvalue(state, item)
+                     scores = env.base.id_to_key[index[v + 1].item()], sorte[v + 1].item(), Qvalue_action.cpu().item()
+                     if scores[0] in Rated[u] or Qvalue_action < 0:
+                         continue
                      else:
+                         Rated[u].append(env.base.id_to_key[index[v + 1].item()])
                          break
+            state = torch.cat([torch.cat([state[128:128 * (frame_size)], item]), torch.cat([state[-frame_size+1:], Qvalue_action])])
             if i == 0:
-                recommendations[u] = scores
+                recommendations[u] = [list(scores)]
             else:
-                recommendations[u].append(scores)
+                recommendations[u].append(list(scores))
 
     return recommendations
 
 
 cos = nn.CosineSimilarity(dim=1, eps=1e-6)
 #cos = nn.DataParallel(cos, device_ids=[0,1,2,3])
-Dict_rec = recommendation(train_dict, embedding, cos, Rated, topk=100, frame_size=10)
+Dict_rec = recommendation(train_dict, embedding, cos, Rated, topk=20, frame_size=5)
 
-with open('frame_s10_gamma_0_99/rec.pkl', 'wb') as f:
+with open('frame_s5_gamma_0_99/rec.pkl', 'wb') as f:
     pickle.dump(Dict_rec,f)
     f.close()
