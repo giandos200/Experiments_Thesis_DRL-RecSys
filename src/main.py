@@ -21,10 +21,10 @@ import recnn
 cuda = torch.device('cuda')
 
 # ---
-frame_size = 5
-batch_size = 50
-n_epochs = 4
-plot_every = 500
+frame_size = 10
+batch_size = 25
+n_epochs = 10
+plot_every = 50
 step = 0
 # ---
 
@@ -33,8 +33,8 @@ tqdm.pandas()
 # embeddgings: https://drive.google.com/open?id=1EQ_zXBR3DKpmJR3jBgLvt-xoOvArGMsL
 dirs = recnn.data.env.DataPath(
     base="",
-    embeddings="ml20_pca128.pkl",
-    ratings="models/train.csv",
+    embeddings="ml1_pca128.pkl",
+    ratings="dict_vari/train.csv",
     cache="frame_env.pkl", # cache will generate after you run
     use_cache=False
 )
@@ -202,9 +202,9 @@ soft_update(policy_net, target_policy_net, soft_tau=1.0)
 value_criterion = nn.MSELoss()
 
 # from good to bad: Ranger Radam Adam RMSprop
-value_optimizer = optim.Ranger(value_net.parameters(), #####CAMBIATO RANGER CON RADAM
+value_optimizer = optim.RAdam(value_net.parameters(), #####CAMBIATO RANGER CON RADAM
                               lr=params['value_lr'], weight_decay=1e-2)
-policy_optimizer = optim.Ranger(policy_net.parameters(),
+policy_optimizer = optim.RAdam(policy_net.parameters(),
                                lr=params['policy_lr'], weight_decay=1e-5)
 
 loss = {
@@ -234,6 +234,16 @@ torch.save(policy_net.state_dict(), "frame_s5_gamma_0_99/ddpg_policy.pt")
 
 torch.save(value_net.state_dict(), "frame_s5_gamma_0_99/ddpg_value.pt")
 
+gen_actions = debug['next_action']
+true_actions = env.base.embeddings.numpy()
+
+
+ad = recnn.nn.AnomalyDetector().to(cuda)
+ad.load_state_dict(torch.load('models/anomaly.pt'))
+ad.eval()
+
+plotter.plot_kde_reconstruction_error(ad, gen_actions, true_actions, cuda)
+
 import json
 import pickle
 # == recnn ==
@@ -251,7 +261,7 @@ from tqdm.auto import tqdm
 sys.path.append("../../")
 import recnn
 
-with open("ml20_pca128.pkl", 'rb') as f:
+with open("ml1_pca128.pkl", 'rb') as f:
     embedding = pickle.load(f)
 
 with open("dict_vari/Rated_train.pkl", 'rb') as f:
@@ -278,22 +288,6 @@ Qvalue.load_state_dict(torch.load('frame_s5_gamma_0_99/ddpg_value.pt')) #value
 #ddpg = policy_net
 
 #Qvalue = value_net
-
-@jit(nopython=True)
-def cosine_similarity_numba(u: np.ndarray, v: np.ndarray):
-    assert (u.shape[0] == v.shape[0])
-    uv = 0
-    uu = 0
-    vv = 0
-    for i in range(u.shape[0]):
-        uv += u[i] * v[i]
-        uu += u[i] * u[i]
-        vv += v[i] * v[i]
-    cos_theta = 1
-    if uu != 0 and vv != 0:
-        cos_theta -= uv / np.sqrt(uu * vv)
-    return np.abs(cos_theta)
-
 
 x = env.base.embeddings
 
@@ -337,7 +331,7 @@ def recommendation(dict, embeddings, cos, rated, topk, frame_size):
 
 cos = nn.CosineSimilarity(dim=1, eps=1e-6)
 #cos = nn.DataParallel(cos, device_ids=[0,1,2,3])
-Dict_rec = recommendation(train_dict, embedding, cos, Rated, topk=20, frame_size=5)
+Dict_rec = recommendation(train_dict, embedding, cos, Rated, topk=20, frame_size=10)
 
 with open('frame_s5_gamma_0_99/rec.pkl', 'wb') as f:
     pickle.dump(Dict_rec,f)

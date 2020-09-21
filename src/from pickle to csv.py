@@ -17,7 +17,7 @@ with open("models/train.pkl", 'rb') as f:
 with open("models/test.pkl", 'rb') as f:
     test = pickle.load(f)
 
-with open("frame_s10_gamma_0_99/rec.pkl", 'rb') as f:
+with open("frame_s5_gamma_0_99/rec.pkl", 'rb') as f:
     rec = pickle.load(f)
 
 def transform_rec_to_csv(train):
@@ -41,16 +41,16 @@ def transform_to_csv(train):
 rec_list = transform_rec_to_csv(rec)
 rec_df = pd.DataFrame(rec_list, columns=["userId", "movieId", "rating"])
 print("ecco")
-rec_df.to_csv(r'frame_s10_gamma_0_99/rec.csv', sep='\t', encoding='utf-8')
+rec_df.to_csv(r'frame_s5_gamma_0_99/rec.tsv', sep='\t', encoding='utf-8', header=None, index=False)
 
 train_list = transform_to_csv(train)
 test_list = transform_to_csv(test)
 train_df = pd.DataFrame(train_list, columns=["userId", "movieId", "rating", "timestamp"])
 test_df = pd.DataFrame(test_list, columns=["userId", "movieId", "rating", "timestamp"])
-train_df.to_csv(r'dict_vari/train_tab.csv', sep='\t', encoding='utf-8')
-test_df.to_csv(r'dict_vari/test_tab.csv', sep='\t', encoding='utf-8')
+train_df.to_csv(r'dict_vari/train_tab.csv', sep='\t', encoding='utf-8', header=None, index=False)
+test_df.to_csv(r'dict_vari/test_tab.csv', sep='\t', encoding='utf-8', header=None, index=False)
 
-input()
+input("ecco")
 
 print(train_df['rating'], train_df["rating"])
 

@@ -42,7 +42,7 @@ def Dict_userBased(dfuser, df):
             eliminati +=1
             print(eliminati)
             pass
-        if num>20:
+        if num>=20:
             cutoff = round(num * 0.8) - 1
             train_dict[u] = ratings[u][:cutoff]
             test_dict[u] = ratings[u][cutoff:]
@@ -51,7 +51,7 @@ def Dict_userBased(dfuser, df):
 
     return ratings, train_dict, test_dict
 
-df = pd.read_csv("ml-20m/ratings.csv", sep=',')
+df = pd.read_csv("ml-1m/ratings.csv", sep=',')
 df = df.sort_values('timestamp')
 df['itemId'] = df['movieId']
 #df.drop(columns=['timestamp', 'movieId'])

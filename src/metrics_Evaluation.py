@@ -13,7 +13,7 @@ with open("models/train.pkl", 'rb') as f:
 with open("models/test.pkl", 'rb') as f:
     test = pickle.load(f)
 
-with open("frame_s10_gamma_0_8/rec.pkl", 'rb') as f:
+with open("frame_s5_gamma_0_5/rec.pkl", 'rb') as f:
     rec = pickle.load(f)
 
 rmse = 0

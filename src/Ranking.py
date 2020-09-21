@@ -29,7 +29,6 @@ frame_size = 10
 # https://drive.google.com/open?id=1t0LNCbqLjiLkAMFwtP8OIYU-zPUCNAjK
 meta = json.load(open('parsed/omdb.json'))
 tqdm.pandas()
-frame_size = 10
 batch_size = 1
 # embeddgings: https://drive.google.com/open?id=1EQ_zXBR3DKpmJR3jBgLvt-xoOvArGMsL
 dirs = recnn.data.env.DataPath(
@@ -44,27 +43,13 @@ env = recnn.data.env.FrameEnv(dirs, frame_size, batch_size)
 ddpg = recnn.nn.models.Actor(129 * frame_size, 128, 256).to(cuda)
 
 # td3 = recnn.nn.models.Actor(129*frame_size, 128, 256).to(cuda)
-ddpg.load_state_dict(torch.load('models/ddpg_policy.pt'))
+ddpg.load_state_dict(torch.load('frame_s5_gamma_0_99/ddpg_policy.pt')) #policy
 # td3.load_state_dict(torch.load('models/td3_policy.pt'))
 Qvalue = recnn.nn.models.Critic(129 * frame_size, 128, 256).to(cuda)
-Qvalue.load_state_dict(torch.load('models/ddpg_value.pt'))
+Qvalue.load_state_dict(torch.load('frame_s5_gamma_0_99/ddpg_value.pt')) #value
+#ddpg = policy_net
 
-
-@jit(nopython=True)
-def cosine_similarity_numba(u: np.ndarray, v: np.ndarray):
-    assert (u.shape[0] == v.shape[0])
-    uv = 0
-    uu = 0
-    vv = 0
-    for i in range(u.shape[0]):
-        uv += u[i] * v[i]
-        uu += u[i] * u[i]
-        vv += v[i] * v[i]
-    cos_theta = 1
-    if uu != 0 and vv != 0:
-        cos_theta -= uv / np.sqrt(uu * vv)
-    return np.abs(cos_theta)
-
+#Qvalue = value_net
 
 x = env.base.embeddings
 
@@ -74,37 +59,46 @@ def recommendation(dict, embeddings, cos, rated, topk, frame_size):
     recommendations = {}
     for u in tqdm(dict.keys()):
         state = []
-        scores = []
         for i in range(topk):
             if i == 0:
                 list1 = torch.cat([embeddings[it] for it, rat, t in dict[u][-frame_size:]], dim=0)
                 rat = torch.FloatTensor([rat for it, rat, t in dict[u][-frame_size:]])
                 state = torch.cat([list1, rat]).to(cuda)
             ddpg_action = ddpg(state)
-            Qvalue_action = Qvalue(state, ddpg_action)
-            state = torch.cat([torch.cat([state[128:128 * (frame_size)], ddpg_action]), torch.cat([state[-9:], Qvalue_action])])
-            Qvalue_action = Qvalue_action.detach().cpu().item()
+            #Qvalue_action = Qvalue(state, ddpg_action)
+            #Qvalue_action = Qvalue_action.detach().cpu().item()
             output = torch.abs(1-cos(ddpg_action.unsqueeze(0), env.base.embeddings.to(cuda))).cpu()
-            scores.append([env.base.id_to_key[torch.argmin(output).item()], torch.min(output).item(), Qvalue_action])
-            if scores[i][0] in rated[u]:
+            item = env.base.embeddings[torch.argmin(output).item()].to(cuda)
+            Qvalue_action = Qvalue(state, item)
+            scores = (env.base.id_to_key[torch.argmin(output).item()], torch.min(output).item(), Qvalue_action.cpu().item())
+            if scores[0] in rated[u] or Qvalue_action < 0:
                  sorte, index = torch.sort(output)
                  for v in (env.base.id_to_key.keys()):
-                     scores[i][0:2] = env.base.id_to_key[index[v + 1].item()], sorte[v + 1].item()
-                     if scores[0] in Rated[u]:
-                         return
+                     item = env.base.embeddings[index[v + 1].item()].to(cuda)
+                     Qvalue_action = Qvalue(state, item)
+                     scores = env.base.id_to_key[index[v + 1].item()], sorte[v + 1].item(), Qvalue_action.cpu().item()
+                     if scores[0] in Rated[u] or Qvalue_action < 0:
+                         continue
                      else:
+                         Rated[u].append(env.base.id_to_key[index[v + 1].item()])
                          break
+            state = torch.cat([torch.cat([state[128:128 * (frame_size)], item]), torch.cat([state[-frame_size+1:], Qvalue_action])])
             if i == 0:
-                recommendations[u] = scores
+                recommendations[u] = [list(scores)]
             else:
-                recommendations[u].append(scores)
+                recommendations[u].append(list(scores))
 
     return recommendations
 
 
 cos = nn.CosineSimilarity(dim=1, eps=1e-6)
 #cos = nn.DataParallel(cos, device_ids=[0,1,2,3])
-Dict_rec = recommendation(train_dict, embedding, cos, Rated, topk=100, frame_size=10)
+Dict_rec = recommendation(train_dict, embedding, cos, Rated, topk=20, frame_size=10)
+
+with open('frame_s5_gamma_0_99/rec.pkl', 'wb') as f:
+    pickle.dump(Dict_rec,f)
+    f.close()
+
 
 input()
 
