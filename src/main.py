@@ -21,9 +21,9 @@ import recnn
 cuda = torch.device('cuda')
 
 # ---
-frame_size = 10
+frame_size = 5
 batch_size = 25
-n_epochs = 10
+n_epochs = 4
 plot_every = 50
 step = 0
 # ---
@@ -33,7 +33,7 @@ tqdm.pandas()
 # embeddgings: https://drive.google.com/open?id=1EQ_zXBR3DKpmJR3jBgLvt-xoOvArGMsL
 dirs = recnn.data.env.DataPath(
     base="",
-    embeddings="ml1_pca128.pkl",
+    embeddings="ml1_pca128_norm.pkl",
     ratings="dict_vari/train.csv",
     cache="frame_env.pkl", # cache will generate after you run
     use_cache=False
@@ -45,7 +45,7 @@ class Actor(nn.Module):
     def __init__(self, input_dim, action_dim, hidden_size, init_w=3e-1):
         super(Actor, self).__init__()
 
-        self.drop_layer = nn.Dropout(p=0.5)
+        #self.drop_layer = nn.Dropout(p=0.5)
 
         self.linear1 = nn.Linear(input_dim, hidden_size)
         self.linear2 = nn.Linear(hidden_size, hidden_size)
@@ -57,11 +57,11 @@ class Actor(nn.Module):
     def forward(self, state):
         # state = self.state_rep(state)
         x = F.relu(self.linear1(state))
-        x = self.drop_layer(x)
+        #x = self.drop_layer(x)
         x = F.relu(self.linear2(x))
-        x = self.drop_layer(x)
+        #x = self.drop_layer(x)
         # x = torch.tanh(self.linear3(x)) # in case embeds are -1 1 normalized
-        x = self.linear3(x)  # in case embeds are standard scaled / wiped using PCA whitening
+        x = torch.tanh(self.linear3(x))  # in case embeds are standard scaled / wiped using PCA whitening
         # return state, x
         return x
 
@@ -70,7 +70,7 @@ class Critic(nn.Module):
     def __init__(self, input_dim, action_dim, hidden_size, init_w=3e-5):
         super(Critic, self).__init__()
 
-        self.drop_layer = nn.Dropout(p=0.5)
+        #self.drop_layer = nn.Dropout(p=0.5)
 
         self.linear1 = nn.Linear(input_dim + action_dim, hidden_size)
         self.linear2 = nn.Linear(hidden_size, hidden_size)
@@ -82,9 +82,9 @@ class Critic(nn.Module):
     def forward(self, state, action):
         x = torch.cat([state, action], 1)
         x = F.relu(self.linear1(x))
-        x = self.drop_layer(x)
+        #x = self.drop_layer(x)
         x = F.relu(self.linear2(x))
-        x = self.drop_layer(x)
+        #x = self.drop_layer(x)
         x = self.linear3(x)
         return x
 
@@ -244,6 +244,7 @@ ad.eval()
 
 plotter.plot_kde_reconstruction_error(ad, gen_actions, true_actions, cuda)
 
+input('spostati a Ranking')
 import json
 import pickle
 # == recnn ==

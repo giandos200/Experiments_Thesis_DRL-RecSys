@@ -7,13 +7,13 @@ from surprise.model_selection import train_test_split
 import pickle
 from tqdm import tqdm
 
-with open("models/train.pkl", 'rb') as f:
+with open("ml-1m/train.pkl", 'rb') as f:
     train = pickle.load(f)
 
-with open("models/test.pkl", 'rb') as f:
+with open("ml-1m/test.pkl", 'rb') as f:
     test = pickle.load(f)
 
-with open("frame_s5_gamma_0_5/rec.pkl", 'rb') as f:
+with open("frame_s5_gamma_0_99/rec.pkl", 'rb') as f:
     rec = pickle.load(f)
 
 rmse = 0

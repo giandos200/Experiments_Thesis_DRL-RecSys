@@ -5,7 +5,7 @@ import numpy as np
 from tqdm import tqdm
 import pickle
 
-with open("ml20_pca128.pkl", 'rb') as f:
+with open("ml1_pca128.pkl", 'rb') as f:
     embedding = pickle.load(f)
 
 def train_test(dict):
@@ -63,10 +63,10 @@ df['itemId'] = df['movieId']
 # print(user_drop)
 user_based_dict, train_dict, test_dict = Dict_userBased(df['userId'], df)
 # train_dict, test_dict = train_test(user_based_dict)
-with open('models/train.pkl', 'wb') as f:
+with open('ml-1m/train.pkl', 'wb') as f:
     pickle.dump(train_dict,f)
     f.close()
 
-with open('models/test.pkl', 'wb') as f:
+with open('ml-1m/test.pkl', 'wb') as f:
     pickle.dump(test_dict,f)
     f.close()
