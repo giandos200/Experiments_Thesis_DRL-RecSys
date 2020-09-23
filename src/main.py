@@ -7,7 +7,7 @@ import torch_optimizer as optim
 import numpy as np
 import pandas as pd3072
 from tqdm.auto import tqdm
-
+torch.cuda.manual_seed(2809)
 
 import matplotlib.pyplot as plt
 #%matplotlib inline
@@ -21,9 +21,9 @@ import recnn
 cuda = torch.device('cuda')
 
 # ---
-frame_size = 5
-batch_size = 25
-n_epochs = 4
+frame_size = 10
+batch_size = 50
+n_epochs = 7
 plot_every = 50
 step = 0
 # ---
@@ -33,8 +33,8 @@ tqdm.pandas()
 # embeddgings: https://drive.google.com/open?id=1EQ_zXBR3DKpmJR3jBgLvt-xoOvArGMsL
 dirs = recnn.data.env.DataPath(
     base="",
-    embeddings="ml1_pca128_norm.pkl",
-    ratings="dict_vari/train.csv",
+    embeddings="ml1_pca128.pkl",
+    ratings="ml-1m/train.csv",
     cache="frame_env.pkl", # cache will generate after you run
     use_cache=False
 )
@@ -45,7 +45,7 @@ class Actor(nn.Module):
     def __init__(self, input_dim, action_dim, hidden_size, init_w=3e-1):
         super(Actor, self).__init__()
 
-        #self.drop_layer = nn.Dropout(p=0.5)
+        self.drop_layer = nn.Dropout(p=0.5)
 
         self.linear1 = nn.Linear(input_dim, hidden_size)
         self.linear2 = nn.Linear(hidden_size, hidden_size)
@@ -57,11 +57,11 @@ class Actor(nn.Module):
     def forward(self, state):
         # state = self.state_rep(state)
         x = F.relu(self.linear1(state))
-        #x = self.drop_layer(x)
+        x = self.drop_layer(x)
         x = F.relu(self.linear2(x))
-        #x = self.drop_layer(x)
+        x = self.drop_layer(x)
         # x = torch.tanh(self.linear3(x)) # in case embeds are -1 1 normalized
-        x = torch.tanh(self.linear3(x))  # in case embeds are standard scaled / wiped using PCA whitening
+        x = self.linear3(x)  # in case embeds are standard scaled / wiped using PCA whitening
         # return state, x
         return x
 
@@ -70,7 +70,7 @@ class Critic(nn.Module):
     def __init__(self, input_dim, action_dim, hidden_size, init_w=3e-5):
         super(Critic, self).__init__()
 
-        #self.drop_layer = nn.Dropout(p=0.5)
+        self.drop_layer = nn.Dropout(p=0.5)
 
         self.linear1 = nn.Linear(input_dim + action_dim, hidden_size)
         self.linear2 = nn.Linear(hidden_size, hidden_size)
@@ -82,9 +82,9 @@ class Critic(nn.Module):
     def forward(self, state, action):
         x = torch.cat([state, action], 1)
         x = F.relu(self.linear1(x))
-        #x = self.drop_layer(x)
+        x = self.drop_layer(x)
         x = F.relu(self.linear2(x))
-        #x = self.drop_layer(x)
+        x = self.drop_layer(x)
         x = self.linear3(x)
         return x
 
@@ -169,8 +169,8 @@ def ddpg_update(batch, params, learn=True, step=-1):
 
 params = {
     'gamma': 0.99,
-    'min_value': -10,
-    'max_value': 10,
+    'min_value': -0,
+    'max_value': 5,
     'policy_step': 10,
     'soft_tau': 0.001,
 
@@ -202,9 +202,9 @@ soft_update(policy_net, target_policy_net, soft_tau=1.0)
 value_criterion = nn.MSELoss()
 
 # from good to bad: Ranger Radam Adam RMSprop
-value_optimizer = optim.RAdam(value_net.parameters(), #####CAMBIATO RANGER CON RADAM
+value_optimizer = optim.Ranger(value_net.parameters(), #####CAMBIATO RANGER CON RADAM
                               lr=params['value_lr'], weight_decay=1e-2)
-policy_optimizer = optim.RAdam(policy_net.parameters(),
+policy_optimizer = optim.Ranger(policy_net.parameters(),
                                lr=params['policy_lr'], weight_decay=1e-5)
 
 loss = {
@@ -230,9 +230,9 @@ for epoch in range(n_epochs):
             plotter.plot_loss()
 
 
-torch.save(policy_net.state_dict(), "frame_s5_gamma_0_99/ddpg_policy.pt")
+torch.save(policy_net.state_dict(), "frame_s10_gamma_0_99/ddpg_policy.pt")
 
-torch.save(value_net.state_dict(), "frame_s5_gamma_0_99/ddpg_value.pt")
+torch.save(value_net.state_dict(), "frame_s10_gamma_0_99/ddpg_value.pt")
 
 gen_actions = debug['next_action']
 true_actions = env.base.embeddings.numpy()
@@ -265,10 +265,10 @@ import recnn
 with open("ml1_pca128.pkl", 'rb') as f:
     embedding = pickle.load(f)
 
-with open("dict_vari/Rated_train.pkl", 'rb') as f:
+with open("ml-1m/Rated_train.pkl", 'rb') as f:
     Rated = pickle.load(f)
 
-with open("models/train.pkl", 'rb') as f:
+with open("ml-1m/train.pkl", 'rb') as f:
     train_dict = pickle.load(f)
 
 cuda = torch.device('cuda')
@@ -308,20 +308,20 @@ def recommendation(dict, embeddings, cos, rated, topk, frame_size):
             #Qvalue_action = Qvalue_action.detach().cpu().item()
             output = torch.abs(1-cos(ddpg_action.unsqueeze(0), env.base.embeddings.to(cuda))).cpu()
             item = env.base.embeddings[torch.argmin(output).item()].to(cuda)
-            Qvalue_action = Qvalue(state, item)
+            Qvalue_action = Qvalue(state, item.unsqueeze(0))
             scores = (env.base.id_to_key[torch.argmin(output).item()], torch.min(output).item(), Qvalue_action.cpu().item())
             if scores[0] in rated[u] or Qvalue_action < 0:
                  sorte, index = torch.sort(output)
                  for v in (env.base.id_to_key.keys()):
                      item = env.base.embeddings[index[v + 1].item()].to(cuda)
-                     Qvalue_action = Qvalue(state, item)
+                     Qvalue_action = Qvalue(state, item.unsqueeze(0))
                      scores = env.base.id_to_key[index[v + 1].item()], sorte[v + 1].item(), Qvalue_action.cpu().item()
                      if scores[0] in Rated[u] or Qvalue_action < 0:
                          continue
                      else:
                          Rated[u].append(env.base.id_to_key[index[v + 1].item()])
                          break
-            state = torch.cat([torch.cat([state[128:128 * (frame_size)], item]), torch.cat([state[-frame_size+1:], Qvalue_action])])
+            state = torch.cat([torch.cat([state[:,128:128 * (frame_size)], item.unsqueeze(0)], 1), torch.cat([state[:,-frame_size+1:], Qvalue_action], 1)], 1)
             if i == 0:
                 recommendations[u] = [list(scores)]
             else:
@@ -334,6 +334,6 @@ cos = nn.CosineSimilarity(dim=1, eps=1e-6)
 #cos = nn.DataParallel(cos, device_ids=[0,1,2,3])
 Dict_rec = recommendation(train_dict, embedding, cos, Rated, topk=20, frame_size=10)
 
-with open('frame_s5_gamma_0_99/rec.pkl', 'wb') as f:
+with open('frame_s10_gamma_0_99/rec.pkl', 'wb') as f:
     pickle.dump(Dict_rec,f)
     f.close()

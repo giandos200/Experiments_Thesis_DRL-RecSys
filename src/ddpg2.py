@@ -11,14 +11,14 @@ from tqdm.auto import tqdm
 tqdm.pandas()
 
 frame_size = 10
-batch_size = 25
+batch_size = 1
 # embeddgings: https://drive.google.com/open?id=1EQ_zXBR3DKpmJR3jBgLvt-xoOvArGMsL
 dirs = recnn.data.env.DataPath(
     base="",
     embeddings="ml20_pca128.pkl",
     ratings="ml-20m/ratings.csv",
     cache="frame_env.pkl",
-    use_cache=True
+    use_cache=False
 )
 env = recnn.data.env.FrameEnv(dirs, frame_size, batch_size)
 # test function
@@ -35,7 +35,7 @@ ddpg = recnn.nn.DDPG(policy_net, value_net)
 ddpg = ddpg.to(cuda)
 
 from time import gmtime, strftime
-ddpg.writer = SummaryWriter(log_dir='../../../runs/DDPG{}'.format(strftime("%H_%M", gmtime())))
+#ddpg.writer = SummaryWriter(log_dir='../../../runs/DDPG{}'.format(strftime("%H_%M", gmtime())))
 plotter = recnn.utils.Plotter(ddpg.loss_layout, [['value', 'policy']],)
 import matplotlib.pyplot as plt
 #% matplotlib inline

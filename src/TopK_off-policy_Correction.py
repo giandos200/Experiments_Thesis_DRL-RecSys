@@ -51,7 +51,7 @@ dirs = recnn.data.env.DataPath(
     # If you change your pipeline, change the name as well!
     # Different pipelines must have different names!
     cache="frame_env_truncated.pkl",
-    use_cache=True
+    use_cache=False
 )
 
 env = recnn.data.env.FrameEnv(
@@ -59,7 +59,7 @@ env = recnn.data.env.FrameEnv(
     batch_size,
     embed_batch=embed_batch,
     prepare_dataset=prepare_dataset,
-    num_workers=4
+    num_workers=1
 )
 
 
