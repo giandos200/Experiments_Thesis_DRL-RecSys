@@ -22,10 +22,10 @@ cuda = torch.device('cuda' if torch.cuda.is_available() else "cpu")
 
 # ---
 frame_size = 10
-batch_size = 1
+batch_size = 10
 n_epochs   = 3
 plot_every = 200
-num_items    = 5000 # n items to recommend. Can be adjusted for your vram
+num_items    = 10 # n items to recommend. Can be adjusted for your vram
 # ---
 
 tqdm.pandas()

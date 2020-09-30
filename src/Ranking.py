@@ -43,7 +43,7 @@ class Critic(nn.Module):
     def __init__(self, input_dim, action_dim, hidden_size, init_w=3e-5):
         super(Critic, self).__init__()
 
-        self.drop_layer = nn.Dropout(p=0.5)
+        #self.drop_layer = nn.Dropout(p=0.5)
 
         self.linear1 = nn.Linear(input_dim + action_dim, hidden_size)
         self.linear2 = nn.Linear(hidden_size, hidden_size)
@@ -119,14 +119,16 @@ def recommendation(dict, embeddings, cos, rated, topk, frame_size):
             if scores[0] in rated[u] or Qvalue_action < 0:
                  sorte, index = torch.sort(output, descending=True)
                  for v in (env.base.id_to_key.keys()):
-                     item = env.base.embeddings[index[v + 1].item()].to(cuda)
+                     item = env.base.embeddings[index[v].item()].to(cuda)
                      Qvalue_action = Qvalue(state, item.unsqueeze(0))
-                     scores = env.base.id_to_key[index[v + 1].item()], sorte[v + 1].item(), Qvalue_action.cpu().item()
+                     scores = env.base.id_to_key[index[v].item()], sorte[v].item(), Qvalue_action.cpu().item()
                      if scores[0] in Rated[u] or Qvalue_action < 0:
                          continue
                      else:
-                         Rated[u].append(env.base.id_to_key[index[v + 1].item()])
+                         Rated[u].append(env.base.id_to_key[index[v].item()])
                          break
+            else:
+                Rated[u].append(env.base.id_to_key[torch.argmax(output).item()])
             state = torch.cat([torch.cat([state[:,128:128 * (frame_size)], item.unsqueeze(0)], 1), torch.cat([state[:,-frame_size+1:], Qvalue_action], 1)], 1)
             if i == 0:
                 recommendations[u] = [list(scores)]
@@ -141,9 +143,9 @@ cos = nn.CosineSimilarity(dim=1, eps=1e-6)
 Dict_rec = recommendation(train_dict, embedding, cos, Rated, topk=10, frame_size=10)
 print(Dict_rec[1])
 #
-# with open('frame_s10_gamma_0_99/rec.pkl', 'wb') as f:
-#     pickle.dump(Dict_rec,f)
-#     f.close()
+with open('frame_s10_gamma_0_99/rec.pkl', 'wb') as f:
+    pickle.dump(Dict_rec,f)
+    f.close()
 
 list1 = torch.cat([embedding[it] for it, rat, t in train_dict[1][-frame_size:]], dim=0)
 rat = torch.FloatTensor([rat for it, rat, t in train_dict[1][-frame_size:]])

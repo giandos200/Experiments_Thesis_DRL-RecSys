@@ -29,7 +29,7 @@ embed_dim  = 128
 # ---
 
 tqdm.pandas()
-ratings = pd.read_csv('ml-20m/ratings.csv')
+ratings = pd.read_csv('ml-1m/ratings.csv')
 keys = list(sorted(ratings['movieId'].unique()))
 key_to_id = dict(zip(keys, range(len(keys))))
 user_dict, users = recnn.data.prepare_dataset(ratings, key_to_id) #, frame_size)
